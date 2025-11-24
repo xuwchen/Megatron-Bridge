@@ -16,7 +16,11 @@ import logging
 
 import torch
 from megatron.core.models.gpt.gpt_model import GPTModel
-from transformers import Glm4MoeForCausalLM
+try:
+    from transformers import Glm4MoeForCausalLM
+except ImportError:
+    # Glm4MoeForCausalLM not available in this transformers version
+    Glm4MoeForCausalLM = None
 
 from megatron.bridge.models.conversion.mapping_registry import MegatronMappingRegistry
 from megatron.bridge.models.conversion.model_bridge import MegatronModelBridge

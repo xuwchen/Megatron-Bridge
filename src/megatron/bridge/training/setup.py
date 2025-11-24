@@ -22,7 +22,11 @@ import torch
 from megatron.core.config import set_experimental_flag
 from megatron.core.distributed import DistributedDataParallel, DistributedDataParallelConfig, finalize_model_grads
 from megatron.core.distributed.fsdp.mcore_fsdp_adapter import FullyShardedDataParallel as megatron_FSDP
-from megatron.core.jit import disable_jit_fuser
+try:
+    from megatron.core.jit import disable_jit_fuser
+except ImportError:
+    # disable_jit_fuser not available in this Megatron-LM version
+    disable_jit_fuser = None
 from megatron.core.optimizer import MegatronOptimizer
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.rerun_state_machine import RerunDataIterator
@@ -117,8 +121,11 @@ def setup(
 
     # Disable the JIT fuser if requested
     if cfg.dist.disable_jit_fuser:
-        print_rank_0("Disabling JIT fuser.")
-        disable_jit_fuser()
+        if disable_jit_fuser is not None:
+            print_rank_0("Disabling JIT fuser.")
+            disable_jit_fuser()
+        else:
+            print_rank_0("Warning: disable_jit_fuser is not available in this Megatron-LM version.")
 
     # Initialize async checkpoint worker if enabled (idempotent if already initialized)
     state.initialize_async_checkpoint_worker()

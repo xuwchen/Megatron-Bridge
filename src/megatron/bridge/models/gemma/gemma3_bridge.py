@@ -16,7 +16,12 @@ import math
 
 import torch
 from megatron.core.models.gpt.gpt_model import GPTModel
-from transformers import AutoConfig, Gemma3ForCausalLM
+try:
+    from transformers import AutoConfig, Gemma3ForCausalLM
+except ImportError:
+    # Gemma3ForCausalLM not available in this transformers version
+    AutoConfig = None
+    Gemma3ForCausalLM = None
 
 from megatron.bridge.models.conversion.mapping_registry import MegatronMappingRegistry
 from megatron.bridge.models.conversion.model_bridge import MegatronModelBridge

@@ -45,12 +45,12 @@ def setup_optimizer(
     Returns:
         tuple containing the optimizer and scheduler
     """
+    # Note: no_weight_decay_cond, scale_lr_cond, lr_mult are deprecated in newer Megatron-LM
+    # They should be configured via config_overrides if needed
     optimizer = get_megatron_optimizer(
         optimizer_config,
         model,
-        no_weight_decay_cond,
-        scale_lr_cond,
-        lr_mult,
+        config_overrides=None,
         use_gloo_process_groups=use_gloo_process_groups,
     )
     scheduler = _get_scheduler(optimizer_config, scheduler_config, optimizer)

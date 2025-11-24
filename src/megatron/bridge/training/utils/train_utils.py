@@ -483,7 +483,7 @@ def training_log(
         writer.add_scalar("learning-rate vs samples", learning_rate, train_state.consumed_train_samples)
         if wandb_writer:
             wandb_writer.log({"learning-rate": learning_rate}, iteration)
-        if config.optimizer.decoupled_lr is not None:
+        if hasattr(config.optimizer, 'decoupled_lr') and config.optimizer.decoupled_lr is not None:
             writer.add_scalar("decoupled-learning-rate", decoupled_learning_rate, iteration)
         if global_state.train_state.skipped_train_samples > 0:
             writer.add_scalar("skipped-train-samples", global_state.train_state.skipped_train_samples, iteration)
@@ -606,12 +606,12 @@ def training_log(
 
         # Decoupled_learning_rate should be not None only on first and last pipeline stage.
         log_string += f" learning rate: {learning_rate:.6E} |"
-        if config.optimizer.decoupled_lr is not None and (
+        if hasattr(config.optimizer, 'decoupled_lr') and config.optimizer.decoupled_lr is not None and (
             parallel_state.is_pipeline_first_stage() or parallel_state.is_pipeline_last_stage()
         ):
             assert decoupled_learning_rate is not None
             log_string += f" decoupled learning rate: {decoupled_learning_rate:.6E} |"
-        else:
+        elif hasattr(config.optimizer, 'decoupled_lr') and config.optimizer.decoupled_lr is not None:
             assert decoupled_learning_rate is None
         log_string += f" global batch size: {batch_size:5d} |"
         for key in total_loss_dict:
