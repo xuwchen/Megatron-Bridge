@@ -1,60 +1,72 @@
-# Qwen3-VL pretraining with Megatron-FSDP
+# Qwen3-VL Training with Megatron-FSDP
 
 ## Step 1: Download Source Code
 
 ```bash
-# Download Megatron-Bridge
-git clone https://github.com/NVIDIA-NeMo/Megatron-Bridge.git
+# Clone Megatron-Bridge
+git clone git@github.com:NVIDIA-NeMo/Megatron-Bridge.git
 cd Megatron-Bridge/
-git checkout -b qwen3_vl origin/main
+git remote add -f xuwchen git@github.com:xuwchen/Megatron-Bridge.git
+git checkout -b qwen3_vl xuwchen/qwen3_vl
 
-# Download Megatron-LM
+# Clone Megatron-LM
 cd 3rdparty/
-git clone https://github.com/NVIDIA/Megatron-LM
+git clone git@github.com:NVIDIA/Megatron-LM.git
 cd Megatron-LM/
-git checkout -b qwen3_vl_dev origin/dev
+git remote add -f xuwchen git@github.com:xuwchen/Megatron-LM.git
+git checkout -b qwen3_vl_dev xuwchen/qwen3_vl_dev
 cd ../../
 ```
 
 ## Step 2: Update the Config File
 
-Update the model config YAML file for your use case and add the Megatron-FSDP required arguments. An example configuration is provided for [Qwen3-VL-30B-A3B-Instruct](../../../examples/recipes/qwen_vl/conf/qwen3_vl_30b_a3b_pretrain_mfsdp_override_example.yaml).
+Update the model config YAML file for your use case with Megatron-FSDP required arguments. Example configuration files are provided for:
+- [Qwen3-VL-30B-A3B-Instruct](../../../examples/recipes/qwen_vl/conf/qwen3_vl_30b_a3b_pretrain_mfsdp_override_example.yaml)
+- [Qwen3-VL-235B-A22B-Instruct](../../../examples/recipes/qwen_vl/conf/qwen3_vl_235b_a22b_pretrain_mfsdp_override_example.yaml)
 
 ## Step 3: Run Training
 
 ### Interactive Node Training
 
-To train on an interactive node, run the following commands:
+Taking Qwen3-VL-30B-A3B as an example, follow these steps to train on an interactive node:
+
+**1. Start the Docker container:**
 
 ```bash
-# Set docker image name
-export DOCKER_IMAGE=/lustre/fsw/portfolios/coreai/users/shifangx/docker/mbridge-251110.sqsh
 # Start docker container
-srun -A coreai_dlalgo_mcore -p interactive --time=04:00:00 --gpus-per-node=8 --container-image=${DOCKER_IMAGE} --container-mounts=/lustre:/lustre --container-workdir="$PWD" -J coreai_dlalgo_mcore-test:test --pty bash
-
-# Set env
-export MEGATRON_BRIDGE_PATH=/path/to/Megatron-Bridge
-export MEGATRON_LM_PATH=${MEGATRON_BRIDGE_PATH}/3rdparty/Megatron-LM
-export PYTHONPATH=${MEGATRON_BRIDGE_PATH}:${MEGATRON_LM_PATH}:${PYTHONPATH}
-export UV_CACHE_DIR=${${MEGATRON_BRIDGE_PATH}}/../uv_cache
-export HF_CACHE_DIR=${${MEGATRON_BRIDGE_PATH}}/../hf_cache
-
-# Run pretraining
-export PYTHONPATH=${MEGATRON_BRIDGE_PATH}:${MEGATRON_LM_PATH}:${PYTHONPATH}
-cd ${MEGATRON_BRIDGE_PATH}/examples/recipes/qwen_vl
-
-uv run python -m torch.distributed.run --nproc_per_node=8 \
-    finetune_qwen_vl.py \
-    --recipe qwen3_vl_3b_active_30b_moe_finetune_config \
-    --config-file conf/qwen3_vl_30b_a3b_pretrain_mfsdp_override_example.yaml
+srun -A coreai_dlalgo_mcore -p interactive --time=04:00:00 --gpus-per-node=8 --container-image=nvcr.io/nvidia/nemo:25.11 --container-mounts=/lustre:/lustre -J coreai_dlalgo_mcore:qwen3_vl --pty bash
 ```
 
-**Note:** If you want to track experiments using Wandb, use the command below to ensure detailed model configuration recorded in your experiment overview. Otherwise, Wandb will only display the config file path (`--config-file conf/qwen3_vl_30b_a3b_pretrain_mfsdp_override_example.yaml`) instead of the actual configuration values.
+**2. Set up the environment:**
 
 ```bash
-uv run python -m torch.distributed.run --nproc_per_node=8 \
+export MEGATRON_BRIDGE_PATH=<your_megatron_bridge_path>
+export MEGATRON_LM_PATH=${MEGATRON_BRIDGE_PATH}/3rdparty/Megatron-LM
+export HF_HOME=${MEGATRON_BRIDGE_PATH}/../hf_home
+unset CUDA_DEVICE_MAX_CONNECTIONS
+```
+
+**3. Launch training:**
+
+```bash
+export PYTHONPATH=${MEGATRON_BRIDGE_PATH}/src:${MEGATRON_LM_PATH}:${PYTHONPATH}
+cd ${MEGATRON_BRIDGE_PATH}/examples/recipes/qwen_vl
+python -m torch.distributed.run --nproc_per_node=8 \
     finetune_qwen_vl.py \
     --recipe qwen3_vl_3b_active_30b_moe_finetune_config \
+    --config-file conf/qwen3_vl_30b_a3b_pretrain_mfsdp_override_example.yaml \
+    --dataset-type hf
+```
+
+> **Note:** If you want to track experiments using Wandb, use the command below to ensure detailed model configuration recorded in your experiment overview. Otherwise, Wandb will only display the config file path (`--config-file conf/qwen3_vl_30b_a3b_pretrain_mfsdp_override_example.yaml`) instead of the actual configuration values.
+
+```bash
+python -m torch.distributed.run --nproc_per_node=8 \
+    finetune_qwen_vl.py \
+    --recipe qwen3_vl_3b_active_30b_moe_finetune_config \
+    --dataset-type hf \
+    dataset.maker_name=make_cord_v2_dataset \
+    mixed_precision=bf16_mixed \
     model.tensor_model_parallel_size=1 \
     model.expert_model_parallel_size=8 \
     model.freeze_language_model=false \
@@ -63,21 +75,21 @@ uv run python -m torch.distributed.run --nproc_per_node=8 \
     model.init_model_with_meta_device=true \
     model.seq_length=4096 \
     model.gradient_accumulation_fusion=false \
+    model.calculate_per_token_loss=true \
+    model.moe_token_dispatcher_type=alltoall \
     train.train_iters=20 \
     train.global_batch_size=32 \
     train.micro_batch_size=1 \
     train.eval_iters=5 \
-    optimizer.lr=2e-5 \
-    optimizer.min_lr=2e-6 \
-    optimizer.use_distributed_optimizer=true \
-    scheduler.lr_warmup_iters=10 \
-    checkpoint.save=your_own_path_to_checkpoints \
+    checkpoint.save=<your_cehckpoint_path> \
     checkpoint.ckpt_format=fsdp_dtensor \
     dist.use_megatron_fsdp=true \
     dist.use_torch_fsdp2=false \
     logger.log_interval=1 \
-    logger.wandb_project=your_own_wandb_project \
-    logger.wandb_exp_name=your_own_wandb_experiment_name \
+    logger.log_throughput=true \
+    logger.log_throughput_to_tensorboard=true \
+    logger.wandb_project=<your_wandb_project> \
+    logger.wandb_exp_name=<your_wandb_exp_name> \
     ddp.grad_reduce_in_fp32=false \
     ddp.use_megatron_fsdp=true \
     ddp.use_distributed_optimizer=true \
@@ -86,55 +98,4 @@ uv run python -m torch.distributed.run --nproc_per_node=8 \
 
 ### Multi-Node Training
 
-For multi-node training, use this example script:
-
-```bash
-export MEGATRON_BRIDGE_PATH=/path/to/Megatron-Bridge
-export MEGATRON_LM_PATH=${MEGATRON_BRIDGE_PATH}/3rdparty/Megatron-LM
-export PYTHONPATH=${MEGATRON_BRIDGE_PATH}:${MEGATRON_LM_PATH}:${PYTHONPATH}
-export UV_CACHE_DIR=${${MEGATRON_BRIDGE_PATH}}/../uv_cache
-export HF_CACHE_DIR=${${MEGATRON_BRIDGE_PATH}}/../hf_cache
-export CONTAINER_IMAGE=/lustre/fsw/portfolios/coreai/users/shifangx/docker/mbridge-251110.sqsh
-export OUTPUT_PATH=${MEGATRON_BRIDGE_PATH}/../MCore/Qwen/Qwen3-VL-30B-A3B-Instruct/output
-
-RUN_CMD="
-export PYTHONPATH=${MEGATRON_BRIDGE_PATH}:${MEGATRON_LM_PATH}:${PYTHONPATH}
-cd ${MEGATRON_BRIDGE_PATH}/examples/recipes/qwen_vl/;
-uv run python \
-    finetune_qwen_vl.py \
-    --recipe qwen3_vl_3b_active_30b_moe_finetune_config \
-    --config-file conf/qwen3_vl_30b_a3b_pretrain_mfsdp_override_example.yaml"
-
-# SLURM settings
-SLURM_LOGS="${OUTPUT_PATH}/slurm_logs"
-mkdir -p ${SLURM_LOGS} || {
-    echo "Error: Failed to create SLURM logs directory ${SLURM_LOGS}"
-    exit 1
-}
-
-# Submit SLURM job
-# Note: Update SBATCH parameters below according to your cluster configuration
-set +e
-sbatch <<EOF
-#!/bin/bash
-
-#SBATCH --job-name=qwen3-vl-30b-a3b-pretrain-mfsdp
-#SBATCH --partition=batch
-#SBATCH --nodes=2
-#SBATCH --ntasks-per-node=8
-#SBATCH --gres=gpu:8
-#SBATCH --time=00:10:00
-#SBATCH --account=coreai_devtech_all
-#SBATCH --exclusive
-#SBATCH --dependency=singleton
-
-srun --mpi=pmix -l \
-    --container-image=${CONTAINER_IMAGE} \
-    --container-mounts="/lustre:/lustre" \
-    --container-workdir=${MEGATRON_BRIDGE_PATH} \
-    bash -x -c "${RUN_CMD}" 2>&1 | tee ${SLURM_LOGS}/\${SLURM_JOB_ID}.log
-
-EOF
-set -e
-
-```
+For multi-node training on a SLURM cluster, refer to the example scripts provided for [Qwen3-VL-30B-A3B-Instruct](../../../examples/recipes/qwen_vl/scripts/sbatch_qwen3_vl_30b_a3b_mfsdp.sh) and [Qwen3-VL-235B-A22B-Instruct](../../../examples/recipes/qwen_vl/scripts/sbatch_qwen3_vl_235b_a22b_mfsdp.sh).
